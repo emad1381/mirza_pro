@@ -26,14 +26,30 @@ function checkSystemRequirements()
 {
     $requirements = [];
     $phpVersion = phpversion();
-    $requirements['php_version'] = ['status' => version_compare($phpVersion, '8.2.0', '>='), 'message' => "نسخه PHP: $phpVersion (نیاز: 8.2+)"];
+    $requirements['php_version'] = [
+        'status' => version_compare($phpVersion, '8.2.0', '>='),
+        'message' => "نسخه PHP: $phpVersion (نیاز: 8.2+)"
+    ];
+
     $extensions = ['mysqli', 'pdo', 'pdo_mysql', 'mbstring', 'zip', 'gd', 'json', 'curl', 'soap'];
     foreach ($extensions as $ext) {
-        $requirements["ext_$ext"] = ['status' => extension_loaded($ext), 'message' => "افزونه $ext"];
+        $requirements["ext_$ext"] = [
+            'status' => extension_loaded($ext),
+            'message' => "افزونه $ext"
+        ];
     }
+
     $baseDir = dirname(__DIR__);
-    $requirements['writable'] = ['status' => is_writable($baseDir), 'message' => "دسترسی نوشتن در پوشه"];
-    $requirements['apache'] = ['status' => function_exists('apache_get_version') || isset($_SERVER['SERVER_SOFTWARE']), 'message' => "وب سرور فعال"];
+    $requirements['writable'] = [
+        'status' => is_writable($baseDir),
+        'message' => "دسترسی نوشتن در پوشه"
+    ];
+
+    $requirements['apache'] = [
+        'status' => function_exists('apache_get_version') || isset($_SERVER['SERVER_SOFTWARE']),
+        'message' => "وب سرور فعال"
+    ];
+
     sendResponse(true, 'Requirements checked', ['requirements' => $requirements]);
 }
 
@@ -55,11 +71,13 @@ function testDatabaseConnection()
             sendResponse(false, "خطا در اتصال به دیتابیس: " . $conn->connect_error);
             return;
         }
+
         $result = $conn->query("SELECT 1");
         if (!$result) {
             sendResponse(false, "دیتابیس متصل شد اما قادر به اجرای کوئری نیست");
             return;
         }
+
         $conn->set_charset("utf8mb4");
         $conn->close();
         sendResponse(true, 'اتصال موفقیت‌آمیز! دیتابیس آماده استفاده است');
@@ -88,12 +106,14 @@ function performInstallation()
     $botUsername = $bot['botUsername'];
 
     try {
+        // Auto-detect bot path from installer URL
         $scriptPath = $_SERVER['PHP_SELF'] ?? '';
         $botPath = dirname(dirname($scriptPath));
         if ($botPath === '/' || $botPath === '\\') {
             $botPath = '';
         }
 
+        // Create config.php
         $configPath = dirname(__DIR__) . '/config.php';
         $configContent = "<?php\n";
         $configContent .= "\$dbname = '$dbName';\n";
@@ -109,14 +129,17 @@ function performInstallation()
         $configContent .= "\$adminnumber = '$adminChatId';\n";
         $configContent .= "\$domainhosts = '$domain$botPath';\n";
         $configContent .= "\$usernamebot = '$botUsername';\n";
-        $configContent .= "\$new_marzban = true;\n?>";
+        $configContent .= "\$new_marzban = true;\n";
+        $configContent .= "?>";
 
         if (!file_put_contents($configPath, $configContent)) {
             sendResponse(false, 'خطا در ایجاد فایل config.php');
             return;
         }
 
+        // Establish database connection
         global $connect, $pdo, $dbname, $usernamedb, $passworddb, $APIKEY, $adminnumber, $domainhosts, $usernamebot, $new_marzban;
+
         $connect = mysqli_connect("localhost", $dbUser, $dbPassword, $dbName);
         if ($connect->connect_error) {
             sendResponse(false, "خطا در اتصال به دیتابیس: " . $connect->connect_error);
@@ -124,7 +147,11 @@ function performInstallation()
         }
         mysqli_set_charset($connect, "utf8mb4");
 
-        $options = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false];
+        $options = [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false
+        ];
         $dsn = "mysql:host=localhost;dbname=$dbName;charset=utf8mb4";
         try {
             $pdo = new PDO($dsn, $dbUser, $dbPassword, $options);
@@ -142,6 +169,7 @@ function performInstallation()
         $usernamebot = $botUsername;
         $new_marzban = true;
 
+        // Execute table.php
         $tablePath = dirname(__DIR__) . '/table.php';
         if (file_exists($tablePath)) {
             ob_start();
@@ -152,13 +180,24 @@ function performInstallation()
             return;
         }
 
-        $webhookUrl = "https://$domain$botPath/index.php";
+        // Create installation marker
         file_put_contents(dirname(__DIR__) . '/.installed', date('Y-m-d H:i:s'));
 
-        sendResponse(true, 'نصب با موفقیت انجام شد! لطفا دستی webhook را از این لینک ست کنید', [
-            'credentials' => ['domain' => $domain, 'dbName' => $dbName, 'dbUser' => $dbUser, 'dbPassword' => $dbPassword, 'botUsername' => $botUsername],
-            'webhookUrl' => "https://api.telegram.org/bot$botToken/setWebhook?url=" . urlencode($webhookUrl)
+        // Prepare webhook URL for manual setup
+        $webhookUrl = "https://$domain$botPath/index.php";
+        $webhookSetupUrl = "https://api.telegram.org/bot$botToken/setWebhook?url=" . urlencode($webhookUrl);
+
+        sendResponse(true, 'نصب با موفقیت انجام شد!', [
+            'credentials' => [
+                'domain' => $domain,
+                'dbName' => $dbName,
+                'dbUser' => $dbUser,
+                'dbPassword' => $dbPassword,
+                'botUsername' => $botUsername
+            ],
+            'webhookUrl' => $webhookSetupUrl
         ]);
+
     } catch (Exception $e) {
         sendResponse(false, 'خطا در نصب: ' . $e->getMessage());
     }
@@ -183,7 +222,10 @@ function cleanupInstaller()
 
 function sendResponse($success, $message, $data = [])
 {
-    $response = array_merge(['success' => $success, 'message' => $message], $data);
+    $response = array_merge([
+        'success' => $success,
+        'message' => $message
+    ], $data);
     echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     exit;
 }
